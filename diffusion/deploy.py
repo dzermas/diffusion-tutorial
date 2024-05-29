@@ -1,20 +1,20 @@
 import torch
 
-from model import DiffusionModel, add_noise, remove_noise
+from diffusion_model import DiffusionModel, add_noise, remove_noise
 
 
 # Load the model and generate a few samples
 def generate_samples(model, num_samples=5):
     model.eval()
     device = next(model.parameters()).device
-    samples = torch.randn(num_samples, model.channels, 28, 28).to(device)
+    samples = torch.randn(num_samples, 1, 28, 28).to(device)
     for t in range(10):
-        samples = add_noise(samples, t/100.0)
-        samples = remove_noise(samples, t/100.0, model)
+        samples = add_noise(samples, t/1000.0)
+        samples = remove_noise(samples, t/1000.0, model)
     return samples
 
 
-model = DiffusionModel(1)
+model = DiffusionModel(in_channels=1, out_channels=1)
 state_dict = torch.load("diffusion_model.pth")
 model.load_state_dict(state_dict)
 

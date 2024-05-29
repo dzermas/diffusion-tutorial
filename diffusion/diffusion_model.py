@@ -4,32 +4,26 @@ from torch import nn
 
 import matplotlib.pyplot as plt
 
+from unet import UNet
 
 class DiffusionModel(nn.Module):
-    def __init__(self, channels):
+    def __init__(self, in_channels, out_channels):
         super().__init__()
-        self.channels = channels
-        self.model = nn.Sequential(
-            nn.Conv2d(channels, 64, 3, padding=1),
-            nn.ReLU(),
-            nn.Conv2d(64, 64, 3, padding=1),
-            nn.ReLU(),
-            nn.Conv2d(64, channels, 3, padding=1),
-        )
+        self.model = UNet(in_channels=in_channels, out_channels=out_channels, first_out_channels=32, num_layers=2)
 
     def forward(self, x):
         return self.model(x)
     
-def noise_scheduler(t, beta_start=0.1, beta_end=0.2):
+def noise_scheduler(t, beta_start=0.001, beta_end=0.004):
     return torch.tensor(beta_start + (beta_end - beta_start) * t)
 
-def add_noise(x, t, beta_start=0.1, beta_end=0.2):
+def add_noise(x, t, beta_start=0.001, beta_end=0.004):
     beta = noise_scheduler(t, beta_start, beta_end)
     # Generates noise with the same shape as the batch of images x
     noise = torch.randn_like(x) * torch.sqrt(beta)
     return x * torch.sqrt(1 - beta) + noise
 
-def remove_noise(x, t, model, beta_start=0.1, beta_end=0.2):
+def remove_noise(x, t, model, beta_start=0.001, beta_end=0.004):
     beta = noise_scheduler(t, beta_start, beta_end)
     # Model predicts the noise directly from the noisy images
     pred_noise = model(x)
