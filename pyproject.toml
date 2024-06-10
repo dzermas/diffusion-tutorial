@@ -14,6 +14,10 @@ urllib3="<2"
 torch = "=1.13.1"
 torchvision = "=0.14.1"
 torchmetrics = "=0.11.4"
+ipykernel = "*"
+setuptools = "<70"
+diffusers = {version = "*", extras = ["training"]}
+aws_utils = {git = "ssh://git@github.com/SenteraLLC/py-aws-utils.git", tag = "v3.5.3"}
 
 [tool.poetry.dev-dependencies]
 pytest = "*"

@@ -12,10 +12,24 @@
             "console": "integratedTerminal"
         },
         {
+            "name": "HF Train",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "scripts/huggingface/train.py",
+            "console": "integratedTerminal"
+        },
+        {
             "name": "Deploy",
             "type": "debugpy",
             "request": "launch",
             "program": "diffusion/deploy.py",
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Debug",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "scripts/debug.py",
             "console": "integratedTerminal"
         }
     ]

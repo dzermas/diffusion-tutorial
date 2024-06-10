@@ -9,8 +9,8 @@ def generate_samples(model, num_samples=5):
     device = next(model.parameters()).device
     samples = torch.randn(num_samples, 1, 28, 28).to(device)
     for t in range(10):
-        samples = add_noise(samples, t/1000.0)
-        samples = remove_noise(samples, t/1000.0, model)
+        samples = add_noise(samples, t/100.0, beta_start=0.01, beta_end=0.1)
+        samples = remove_noise(samples, t/100.0, model, beta_start=0.01, beta_end=0.1)
     return samples
 
 
@@ -28,4 +28,5 @@ fig, axes = plt.subplots(1, num_samples, figsize=(10, 1))
 for i, ax in enumerate(axes.flat):
     ax.imshow(generated_images[i].squeeze(0).detach().numpy(), cmap='gray')
     ax.axis('off')
+plt.savefig('results.png')
 plt.show()

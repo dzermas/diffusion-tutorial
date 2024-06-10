@@ -20,11 +20,11 @@ def train(model, data_loader, epochs=1):
             images = torch.stack([image.to(device) for image in images])
             loss = 0
             noisy_images = images
-            for t in reversed(range(10)):
-                noisy_images = add_noise(noisy_images, t/1000.0)
+            for t in reversed(range(100)):
+                noisy_images = add_noise(noisy_images, t/100.0)
                 if t == 0:
                     continue
-                reconstructed = remove_noise(noisy_images, t/1000.0, model)
+                reconstructed = remove_noise(noisy_images, t/100.0, model)
                 # plot the noisy and reconstructed images side by side with the t value
                 # Create a plot with 1 row and 3 columns the 3rd column is for the difference between the images
                 # plt.subplot(1, 3, 1)
