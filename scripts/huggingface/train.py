@@ -16,37 +16,34 @@ from tqdm.auto import tqdm
 from dataclasses import dataclass
 
 
+from pynvml import *
+
+
+def print_gpu_utilization():
+    nvmlInit()
+    handle = nvmlDeviceGetHandleByIndex(0)
+    info = nvmlDeviceGetMemoryInfo(handle)
+    print(f"GPU memory occupied: {info.used//1024**2} MB.")
+
+
 @dataclass
 class TrainingConfig:
-    image_size = 512  # the generated image resolution
-    train_batch_size = 4
-    eval_batch_size = 4  # how many images to sample during evaluation
+    image_size = 512  # CHANGE UNET LAYERS IF YOU CHANGE THIS
+    train_batch_size = 1
+    eval_batch_size = 1  # how many images to sample during evaluation
     num_epochs = 100
     num_inference_steps = 1000  # the number of steps to run the model during inference
-    gradient_accumulation_steps = 8
-    learning_rate = 0.0001
+    gradient_accumulation_steps = 16
+    learning_rate = 0.00001
     lr_warmup_steps = 10
-    save_image_epochs = 2
-    save_model_epochs = 2
+    save_progress_epochs = 2
     mixed_precision = "fp16"  # `no` for float32, `fp16` for automatic mixed precision
-    output_dir = "corn-rows-normalized-255-gradacc8"  # the model name locally and on the HF Hub
+    output_dir = "corn-rows-normalized-gradacc-512-morelayersUNET"  # the model name locally and on the HF Hub
     data_dir = "/home/ubuntu/diffusion-tutorial/data"
     mean = [0.3925, 0.3505, 0.3117]
     std = [0.1126, 0.1050, 0.0876]
-    seed = 0
+    seed = 0 
 
-config = TrainingConfig()
-
-
-# Create transformation concatenation with random horizontal and vertical flips
-transform = torchvision.transforms.Compose([
-    torchvision.transforms.RandomHorizontalFlip(),
-    torchvision.transforms.RandomVerticalFlip(),
-    torchvision.transforms.CenterCrop(460),
-    torchvision.transforms.Resize(config.image_size),
-    torchvision.transforms.ToTensor(),
-    torchvision.transforms.Normalize(mean=config.mean, std=config.std)
-])
 
 class SimpleImageDataset(Dataset):
     def __init__(self, image_dir, transform=None):
@@ -61,12 +58,18 @@ class SimpleImageDataset(Dataset):
         image_path = os.path.join(self.image_dir, self.image_files[idx])
         image = Image.open(image_path).convert("RGB")
         image = self.transform(image)
-        return {"image": image}
+        return image
 
 
 def evaluate(config, epoch, pipeline):
     # Sample some images from random noise (this is the backward diffusion process).
     # The default pipeline output type is `List[PIL.Image]`
+    # model_training_path = config.output_dir
+    # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    # pipeline = DDPMPipeline.from_pretrained(model_training_path).to(device)
+
+    # pipeline.scheduler = DDIMScheduler.from_pretrained(f'{model_training_path}/scheduler')
+    # images = [pipeline(num_inference_steps=40).images[0] for i in range(4)]
     images = pipeline(
         batch_size=config.eval_batch_size,
         generator=torch.Generator(device='cpu').manual_seed(config.seed), # Use a separate torch generator to avoid rewinding the random state of the main training loop
@@ -81,56 +84,6 @@ def evaluate(config, epoch, pipeline):
     os.makedirs(test_dir, exist_ok=True)
     image_grid.save(f"{test_dir}/{epoch:04d}.png")
 
-
-# Load the dataset
-dataset = SimpleImageDataset(config.data_dir, transform=transform)
-
-noise_scheduler = DDPMScheduler(num_train_timesteps=1000, beta_schedule="squaredcos_cap_v2")
-
-# Custom collate function for DataLoader
-def collate_fn(batch):
-    images = [item['image'] for item in batch]
-    images = torch.stack([torch.tensor(image) for image in images])  # Convert to (C, H, W) format
-    return images
-
-train_dataloader = DataLoader(
-    dataset,
-    batch_size=config.train_batch_size,
-    shuffle=True,
-    num_workers=4,
-    collate_fn=collate_fn,
-)
-
-model = UNet2DModel(
-    sample_size=config.image_size,  # the target image resolution
-    in_channels=3,  # the number of input channels, 3 for RGB images
-    out_channels=3,  # the number of output channels
-    layers_per_block=2,  # how many ResNet layers to use per UNet block
-    block_out_channels=(64, 64, 128, 128, 256, 256),  # the number of output channels for each UNet block
-    down_block_types=(
-        "DownBlock2D",  # a regular ResNet downsampling block
-        "DownBlock2D",
-        "DownBlock2D",
-        "DownBlock2D",
-        "AttnDownBlock2D",  # a ResNet downsampling block with spatial self-attention
-        "DownBlock2D",
-    ),
-    up_block_types=(
-        "UpBlock2D",  # a regular ResNet upsampling block
-        "AttnUpBlock2D",  # a ResNet upsampling block with spatial self-attention
-        "UpBlock2D",
-        "UpBlock2D",
-        "UpBlock2D",
-        "UpBlock2D",
-    ),
-)
-
-optimizer = torch.optim.AdamW(model.parameters(), lr=config.learning_rate)
-lr_scheduler = get_cosine_schedule_with_warmup(
-    optimizer=optimizer,
-    num_warmup_steps=config.lr_warmup_steps,
-    num_training_steps=(len(train_dataloader) * config.num_epochs),
-)
 
 def train_loop(config, model, noise_scheduler, optimizer, train_dataloader, lr_scheduler):
     # Initialize accelerator and tensorboard logging
@@ -195,14 +148,68 @@ def train_loop(config, model, noise_scheduler, optimizer, train_dataloader, lr_s
 
         # After each epoch you optionally sample some demo images with evaluate() and save the model
         if accelerator.is_main_process:
-            pipeline = DDPMPipeline(unet=accelerator.unwrap_model(model), scheduler=noise_scheduler)
-
-            if (epoch + 1) % config.save_image_epochs == 0 or epoch == config.num_epochs - 1:
-                evaluate(config, epoch, pipeline)
-
-            if (epoch + 1) % config.save_model_epochs == 0 or epoch == config.num_epochs - 1:
+            if (epoch + 1) % config.save_progress_epochs == 0 or epoch == config.num_epochs - 1:
+                pipeline = DDPMPipeline(unet=accelerator.unwrap_model(model), scheduler=noise_scheduler)
                 pipeline.save_pretrained(config.output_dir, safe_serialization=False)
+                evaluate(config, epoch, pipeline)                
 
 
 if __name__ == "__main__":
+    config = TrainingConfig()
+
+    # Create transformation concatenation with random horizontal and vertical flips
+    transform = torchvision.transforms.Compose([
+        torchvision.transforms.RandomHorizontalFlip(),
+        torchvision.transforms.RandomVerticalFlip(),
+        torchvision.transforms.CenterCrop(460),
+        torchvision.transforms.Resize(config.image_size),
+        torchvision.transforms.ToTensor(),
+        torchvision.transforms.Normalize(mean=config.mean, std=config.std)
+    ])
+
+    # Load the dataset
+    dataset = SimpleImageDataset(config.data_dir, transform=transform)
+    train_dataloader = DataLoader(
+        dataset,
+        batch_size=config.train_batch_size,
+        shuffle=True,
+        num_workers=4,
+    )
+
+    # Output channels
+    block_out_channels = (
+        config.image_size // 4, config.image_size // 4, 
+        config.image_size // 2, config.image_size // 2, 
+        config.image_size, config.image_size
+    )
+    # block_out_channels = [config.image_size // 8, config.image_size // 4, config.image_size // 2, config.image_size]
+    model = UNet2DModel(
+        sample_size=config.image_size,  # the target image resolution
+        in_channels=3,  # the number of input channels, 3 for RGB images
+        out_channels=3,  # the number of output channels
+        layers_per_block=2,  # how many ResNet layers to use per UNet block
+        # block_out_channels=block_out_channels,  # the number of output channels for each UNet block
+        down_block_types=(
+            "DownBlock2D",  # a regular ResNet downsampling block
+            "DownBlock2D",
+            "AttnDownBlock2D",
+            "AttnDownBlock2D",  # a ResNet downsampling block with spatial self-attention
+        ),
+        up_block_types=(
+            "AttnUpBlock2D",  # a ResNet upsampling block with spatial self-attention
+            "AttnUpBlock2D",
+            "UpBlock2D",
+            "UpBlock2D",
+        ),
+        dropout=0.0
+    )
+    model.enable_xformers_memory_efficient_attention()
+    optimizer = torch.optim.AdamW(model.parameters(), lr=config.learning_rate)
+    lr_scheduler = get_cosine_schedule_with_warmup(
+        optimizer=optimizer,
+        num_warmup_steps=config.lr_warmup_steps,
+        num_training_steps=(len(train_dataloader) * config.num_epochs),
+    )
+
+    noise_scheduler = DDPMScheduler(num_train_timesteps=1000, beta_schedule="squaredcos_cap_v2")
     train_loop(config, model, noise_scheduler, optimizer, train_dataloader, lr_scheduler)

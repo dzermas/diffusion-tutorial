@@ -16,13 +16,18 @@ torchvision = "=0.14.1"
 torchmetrics = "=0.11.4"
 ipykernel = "*"
 setuptools = "<70"
+nvidia-ml-py3 = "*"
 diffusers = {version = "*", extras = ["training"]}
+xformers = {version = "*", extras = ["training"]}
 aws_utils = {git = "ssh://git@github.com/SenteraLLC/py-aws-utils.git", tag = "v3.5.3"}
 
 [tool.poetry.dev-dependencies]
 pytest = "*"
 pre_commit = "*"
 mypy = "*"
+
+[tool.poetry.extras]
+training = ["diffusers", "xformers", "apex"]
 
 [tool.isort]
 line_length = 88
